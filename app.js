@@ -21,6 +21,8 @@ const canonicalPumpNames = {
   'BD Alaris – PCU and LVP': 'BD Alaris',
   'BD Alaris – PCU & Large Volume Pump': 'BD Alaris',
   'BD Alaris - PCU and Large Volume Pump': 'BD Alaris',
+  'BD Alaris â€“ PCU and Large Volume Pump': 'BD Alaris',
+  'BD Alaris â€“ PCU and LVP': 'BD Alaris',
   'Baxter Sigma Spectrum IQ': 'Baxter Sigma Spectrum IQ',
   'Baxter Spectrum IQ': 'Baxter Sigma Spectrum IQ',
   'Baxter Sigma IQ': 'Baxter Sigma Spectrum IQ',
@@ -47,7 +49,16 @@ let photos = [];
 
 const $ = id => document.getElementById(id);
 const screens = ['sessionScreen','homeScreen','issueScreen','exportScreen'];
-function save(){ localStorage.setItem('hef_state', JSON.stringify(state)); }
+function save(){
+  try {
+    localStorage.setItem('hef_state', JSON.stringify(state));
+    return true;
+  } catch (err) {
+    console.error('Save failed', err);
+    alert('The issue could not be saved. This may happen if the attached photos are too large for browser storage. Try removing one or more photos and saving again.');
+    return false;
+  }
+}
 function show(id){ screens.forEach(s => $(s).classList.toggle('active', s === id)); render(); }
 function severityLabel(v){ return ({2:'Minor',3:'Moderate',4:'Major',5:'Catastrophic'})[v] || '—'; }
 function esc(s=''){ return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
@@ -116,7 +127,7 @@ function startSession(){
     drugLibrary: $('drugLibrary').value,
     startedAt: new Date().toISOString()
   };
-  save(); show('homeScreen');
+  if(save()) show('homeScreen');
 }
 
 function changeContext(){
@@ -135,7 +146,7 @@ function finishScenario(){
     issueCount: state.issues.filter(issueBelongsToCurrent).length
   };
   state.completedScenarios.push(record);
-  save();
+  if(!save()) return;
   alert(`Scenario finished:\n${record.device}\n${record.scenario}\n\nYou can now select another pump system and/or scenario.`);
   changeContext();
 }
@@ -190,7 +201,7 @@ function saveIssue(){
   };
   if(editingId){ state.issues = state.issues.map(i => i.id === editingId ? item : i); }
   else { state.issues.push(item); }
-  save(); show('homeScreen');
+  if(save()) show('homeScreen');
 }
 function photoFileName(issueId, idx, type='image/jpeg'){
   const ext = type.includes('png') ? 'png' : type.includes('webp') ? 'webp' : 'jpg';
