@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Heuristic Eval Capture</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Heuristic Eval</h1>
+      <p id="sessionSummary">No session started</p>
+    </div>
+    <button id="resetBtn" class="ghost">Reset</button>
+  </header>
+
+  <main>
+    <section id="sessionScreen" class="card screen active">
+      <h2 id="sessionScreenTitle">Select Pump / Scenario</h2>
+      <label>Evaluator<input id="evaluator" placeholder="Evaluator name" /></label>
+      <label>Pump System
+        <select id="device">
+          <option value="">Select pump system</option>
+          <option>BD Alaris</option>
+          <option>Baxter Sigma Spectrum IQ</option>
+          <option>Ivenix</option>
+          <option>Plum Duo</option>
+        </select>
+      </label>
+      <label>Scenario
+        <select id="scenario">
+          <option value="">Select scenario</option>
+          <option>Normal saline infusion at 125 mL/hr</option>
+          <option>Secondary antibiotic infusion</option>
+          <option>Insulin titration</option>
+        </select>
+      </label>
+      <label>Software Version<input id="softwareVersion" placeholder="Optional" /></label>
+      <label>Drug Library / Profile<input id="drugLibrary" placeholder="Optional" /></label>
+      <div class="button-row">
+        <button id="startSessionBtn" class="primary">Start / Continue Evaluation</button>
+        <button id="cancelContextBtn" type="button" class="ghost bordered">Cancel</button>
+      </div>
+    </section>
+
+    <section id="homeScreen" class="screen">
+      <div class="hero card">
+        <p class="eyebrow">Active Evaluation Context</p>
+        <h2 id="currentDevice">—</h2>
+        <p id="currentScenario" class="context-scenario">—</p>
+        <div class="context-actions">
+          <button id="changeContextBtn" class="secondary">Change Pump / Scenario</button>
+          <button id="finishScenarioBtn" class="ghost finish">Finish Scenario</button>
+        </div>
+        <div class="stats">
+          <div><strong id="issueCount">0</strong><span>Issues</span></div>
+          <div><strong id="highSeverityCount">0</strong><span>Major+</span></div>
+        </div>
+        <button id="newIssueBtn" class="primary big">+ Record Usability Issue</button>
+      </div>
+      <section class="card">
+        <div class="row between">
+          <h2>Issue List</h2>
+          <button id="exportBtn" class="secondary">Export</button>
+        </div>
+        <div id="issueList" class="issue-list empty">No issues recorded yet.</div>
+      </section>
+    </section>
+
+    <section id="issueScreen" class="card screen">
+      <div class="row between">
+        <h2 id="issueFormTitle">New Issue</h2>
+        <button id="cancelIssueBtn" class="ghost">Cancel</button>
+      </div>
+      <label>Issue Title<input id="issueTitle" placeholder="Short descriptive title" /></label>
+      <label>What happened?<textarea id="issueDescription" rows="5" placeholder="Describe the observed usability issue."></textarea></label>
+      <label>Task Phase
+        <select id="taskPhase">
+          <option>Setup</option>
+          <option>Loading</option>
+          <option>Programming</option>
+          <option>Review / confirmation</option>
+          <option>Starting infusion</option>
+          <option>Secondary programming</option>
+          <option>Titration</option>
+          <option>Alarm response</option>
+          <option>Other</option>
+        </select>
+      </label>
+      <label>Evaluator goal / intended action<textarea id="evaluatorGoal" rows="3" placeholder="What was the evaluator trying to accomplish?"></textarea></label>
+
+      <fieldset>
+        <legend>Heuristic(s) Violated</legend>
+        <div id="heuristicChoices" class="checks"></div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Severity</legend>
+        <div class="severity-grid">
+          <label><input type="radio" name="severity" value="2" /> Minor</label>
+          <label><input type="radio" name="severity" value="3" checked /> Moderate</label>
+          <label><input type="radio" name="severity" value="4" /> Major</label>
+          <label><input type="radio" name="severity" value="5" /> Catastrophic</label>
+        </div>
+      </fieldset>
+
+      <label>Additional Notes<textarea id="notes" rows="4" placeholder="Optional notes, context, or follow-up questions."></textarea></label>
+
+      <fieldset>
+        <legend>Evidence</legend>
+        <p class="hint">Add one or more photos for this issue.</p>
+        <input id="photo" class="visually-hidden" type="file" accept="image/*" capture="environment" />
+        <button id="takePhotoBtn" type="button" class="secondary full">📷 Take Photo</button>
+        <div id="photoThumbs" class="photo-thumbs"></div>
+      </fieldset>
+
+      <button id="saveIssueBtn" class="primary">Save Issue</button>
+    </section>
+
+    <section id="exportScreen" class="card screen">
+      <div class="row between"><h2>Export Data</h2><button id="backFromExportBtn" class="ghost">Back</button></div>
+      <p>Download a ZIP package containing <strong>issues.csv</strong>, <strong>issues.json</strong>, and a <strong>photos</strong> folder with every photo associated with each issue.</p>
+      <button id="downloadZipBtn" class="primary">Download ZIP Package</button>
+      <button id="downloadCsvBtn" class="secondary full">Download CSV Only</button>
+      <button id="downloadJsonBtn" class="secondary full">Download JSON Only</button>
+      <textarea id="exportPreview" rows="12" readonly></textarea>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
