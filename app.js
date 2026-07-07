@@ -322,13 +322,19 @@ async function uploadPhoto(ctx, issue, remoteIssueId, photo, index) {
   const blob = dataUriToBlob(photo.data);
   const encodedPath = encodeURIComponent(name).replace(/%2F/g, '/');
   const driveItem = await graph(`/drives/${ctx.photoDriveId}/root:/${encodedPath}:/content`, { method: 'PUT', headers: { 'Content-Type': blob.type }, body: blob });
+  // The upload response does not consistently include listItem on SharePoint-backed drives.
+  // Resolve the library item explicitly before updating its Issue lookup and description fields.
+  const photoListItem = driveItem.listItem?.id
+    ? driveItem.listItem
+    : await graph(`/drives/${ctx.photoDriveId}/items/${driveItem.id}/listItem?$expand=fields`);
+  if (!photoListItem?.id) throw new Error('Photo uploaded, but its SharePoint library item could not be resolved.');
   const photoList = ctx.lists['Stratus Heuristic Photos'];
   const f = photoList.columns;
   const fields = {};
   if (f['Issue']) Object.assign(fields, lookupPayload(f['Issue'], remoteIssueId));
   if (f['Photo Description']) fields[f['Photo Description']] = `Evidence photo ${index + 1} for: ${issue.title}`;
-  if (Object.keys(fields).length) await graph(`/sites/${ctx.site.id}/lists/${photoList.id}/items/${driveItem.listItem.id}/fields`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields) });
-  return driveItem.listItem.id;
+  if (Object.keys(fields).length) await graph(`/sites/${ctx.site.id}/lists/${photoList.id}/items/${photoListItem.id}/fields`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields) });
+  return photoListItem.id;
 }
 
 async function syncAll() {
