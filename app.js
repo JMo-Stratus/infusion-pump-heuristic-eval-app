@@ -306,7 +306,11 @@ async function createRemoteIssue(ctx, issue, sessionId) {
   if (f['Task Phase']) fields[f['Task Phase']] = issue.taskPhase;
   if (f['Location of Occurrence']) fields[f['Location of Occurrence']] = issue.locationOccurrence;
   if (f['Heuristic Violation Severity']) fields[f['Heuristic Violation Severity']] = issue.severity;
-  if (f['Heuristics Violated']) fields[f['Heuristics Violated']] = issue.heuristics || [];
+  if (f['Heuristics Violated']) {
+    // Microsoft Graph requires an explicit OData type for a multi-select Choice field.
+    fields[`${f['Heuristics Violated']}@odata.type`] = 'Collection(Edm.String)';
+    fields[f['Heuristics Violated']] = issue.heuristics || [];
+  }
   if (f['Usability Issue Description']) fields[f['Usability Issue Description']] = issue.description;
   return graph(`/sites/${ctx.site.id}/lists/${list.id}/items`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields }) });
 }
@@ -332,14 +336,18 @@ async function syncAll() {
   const unsynced = pendingIssues();
   if (!unsynced.length) { alert('Everything is already synced to SharePoint.'); return; }
   $('syncBtn').disabled = true; $('syncBtn').textContent = 'Syncing…';
+  let syncStage = 'connecting to SharePoint';
   try {
     const ctx = await getGraphContext();
+    syncStage = 'creating or locating the evaluation session';
     const sessionId = await ensureRemoteSession(ctx);
     for (const issue of unsynced) {
+      syncStage = `creating issue: ${issue.title || 'Untitled issue'}`;
       const remote = issue.remoteIssueId ? { id: issue.remoteIssueId } : await createRemoteIssue(ctx, issue, sessionId);
       issue.remoteIssueId = remote.id;
       issue.remotePhotoIds ||= [];
       for (let i = issue.remotePhotoIds.length; i < (issue.photos || []).length; i++) {
+        syncStage = `uploading photo ${i + 1} for: ${issue.title || 'Untitled issue'}`;
         const remotePhotoId = await uploadPhoto(ctx, issue, remote.id, issue.photos[i], i);
         issue.remotePhotoIds.push(remotePhotoId);
       }
@@ -348,7 +356,7 @@ async function syncAll() {
     alert(`${unsynced.length} issue(s) and associated photos were synced to SharePoint.`);
   } catch (err) {
     console.error(err);
-    alert(`Sync stopped before completion. Previously synced records were preserved.\n\n${err.message || err}`);
+    alert(`Sync stopped during ${syncStage}. Previously synced records were preserved.\n\n${err.message || err}`);
   } finally {
     $('syncBtn').disabled = false; $('syncBtn').textContent = 'Sync'; render();
   }
