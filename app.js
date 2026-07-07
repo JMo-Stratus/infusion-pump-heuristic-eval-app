@@ -325,15 +325,49 @@ $('resetBtn').onclick = () => { if(confirm('Clear the current session and all lo
 $('takePhotoBtn').onclick = () => $('photo').click();
 $('changeContextBtn').onclick = changeContext;
 $('finishScenarioBtn').onclick = finishScenario;
-$('photo').onchange = e => {
+function compressImageFile(file, maxDim=1200, quality=0.72){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        let {width, height} = img;
+        const scale = Math.min(1, maxDim / Math.max(width, height));
+        width = Math.max(1, Math.round(width * scale));
+        height = Math.max(1, Math.round(height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        const data = canvas.toDataURL('image/jpeg', quality);
+        resolve({data, type:'image/jpeg'});
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+$('photo').onchange = async e => {
   const file = e.target.files[0]; if(!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    photos.push({data: reader.result, type: file.type || 'image/jpeg', originalName: file.name || '', timestamp: new Date().toISOString()});
+  try {
+    const compressed = await compressImageFile(file);
+    photos.push({
+      data: compressed.data,
+      type: compressed.type,
+      originalName: file.name || '',
+      originalSize: file.size || 0,
+      timestamp: new Date().toISOString()
+    });
     $('photo').value = '';
     renderPhotos();
-  };
-  reader.readAsDataURL(file);
+  } catch (err) {
+    console.error('Photo processing failed', err);
+    alert('The photo could not be added. Try taking the photo again.');
+  }
 };
 
 renderHeuristics();
