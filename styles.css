@@ -59,3 +59,7 @@ legend { font-weight:800; padding:0 6px; }
 .button-row .primary { width:100%; }
 .bordered { border:1px solid var(--line); }
 @media (max-width:420px){ .button-row { grid-template-columns:1fr; } .button-row .ghost { width:100%; } }
+.header-actions { display:flex; align-items:center; gap:4px; flex-wrap:wrap; justify-content:flex-end; }
+.header-actions button { padding:8px 10px; font-size:13px; }
+.hidden { display:none !important; }
+@media (max-width:520px){ header { align-items:flex-start; } .header-actions { max-width:175px; } }

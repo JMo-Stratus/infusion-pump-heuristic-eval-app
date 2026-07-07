@@ -3,23 +3,28 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Heuristic Eval Capture</title>
+  <title>Stratus Heuristic Capture</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <header>
     <div>
-      <h1>Heuristic Eval</h1>
+      <h1>Stratus Heuristic Capture</h1>
       <p id="sessionSummary">No session started</p>
     </div>
-    <button id="resetBtn" class="ghost">Reset</button>
+    <div class="header-actions">
+      <button id="syncBtn" class="secondary">Sync</button>
+      <button id="signInBtn" class="ghost">Sign in</button>
+      <button id="signOutBtn" class="ghost hidden">Sign out</button>
+      <button id="resetBtn" class="ghost">Reset</button>
+    </div>
   </header>
 
   <main>
     <section id="sessionScreen" class="card screen active">
       <h2 id="sessionScreenTitle">Select Pump / Scenario</h2>
-      <label>Evaluator<input id="evaluator" placeholder="Evaluator name" /></label>
+      <p id="accountStatus" class="hint">Sign in to sync to SharePoint. You may still capture issues locally while offline.</p>
       <label>Pump System
         <select id="device">
           <option value="">Select pump system</option>
@@ -34,7 +39,7 @@
           <option value="">Select scenario</option>
           <option>Normal saline infusion at 125 mL/hr</option>
           <option>Secondary antibiotic infusion</option>
-          <option>Insulin titration</option>
+          <option>Insulin infusion &amp; titration</option>
         </select>
       </label>
       <label>Software Version<input id="softwareVersion" placeholder="Optional" /></label>
@@ -50,6 +55,7 @@
         <p class="eyebrow">Active Evaluation Context</p>
         <h2 id="currentDevice">—</h2>
         <p id="currentScenario" class="context-scenario">—</p>
+        <p id="syncStatus" class="hint"></p>
         <div class="context-actions">
           <button id="changeContextBtn" class="secondary">Change Pump / Scenario</button>
           <button id="finishScenarioBtn" class="ghost finish">Finish Scenario</button>
@@ -57,6 +63,7 @@
         <div class="stats">
           <div><strong id="issueCount">0</strong><span>Issues</span></div>
           <div><strong id="highSeverityCount">0</strong><span>Major+</span></div>
+          <div><strong id="pendingCount">0</strong><span>Pending Sync</span></div>
         </div>
         <button id="newIssueBtn" class="primary big">+ Record Usability Issue</button>
       </div>
@@ -75,21 +82,28 @@
         <button id="cancelIssueBtn" class="ghost">Cancel</button>
       </div>
       <label>Issue Title<input id="issueTitle" placeholder="Short descriptive title" /></label>
-      <label>What happened?<textarea id="issueDescription" rows="5" placeholder="Describe the observed usability issue."></textarea></label>
+      <label>Usability Issue Description<textarea id="issueDescription" rows="5" placeholder="Describe the observed usability issue."></textarea></label>
       <label>Task Phase
         <select id="taskPhase">
-          <option>Setup</option>
-          <option>Loading</option>
-          <option>Programming</option>
-          <option>Review / confirmation</option>
-          <option>Starting infusion</option>
-          <option>Secondary programming</option>
-          <option>Titration</option>
-          <option>Alarm response</option>
-          <option>Other</option>
+          <option>Normal saline infusion at 125 mL/hr</option>
+          <option>Secondary antibiotic infusion</option>
+          <option>Insulin infusion &amp; titration</option>
         </select>
       </label>
-      <label>Evaluator goal / intended action<textarea id="evaluatorGoal" rows="3" placeholder="What was the evaluator trying to accomplish?"></textarea></label>
+      <label>Location of Occurrence
+        <select id="locationOccurrence">
+          <option>Physical Design</option>
+          <option>Startup</option>
+          <option>Navigation</option>
+          <option>System Configuration</option>
+          <option>Drug / Fluid Selection</option>
+          <option>Programming</option>
+          <option>Confirmation</option>
+          <option>Active Infusion</option>
+          <option>Information Display</option>
+          <option>Alerts &amp; Alarms</option>
+        </select>
+      </label>
 
       <fieldset>
         <legend>Heuristic(s) Violated</legend>
@@ -97,21 +111,19 @@
       </fieldset>
 
       <fieldset>
-        <legend>Severity</legend>
+        <legend>Heuristic Violation Severity</legend>
         <div class="severity-grid">
-          <label><input type="radio" name="severity" value="2" /> Minor</label>
-          <label><input type="radio" name="severity" value="3" checked /> Moderate</label>
-          <label><input type="radio" name="severity" value="4" /> Major</label>
-          <label><input type="radio" name="severity" value="5" /> Catastrophic</label>
+          <label><input type="radio" name="severity" value="1: Cosmetic" /> 1: Cosmetic</label>
+          <label><input type="radio" name="severity" value="2: Minor" checked /> 2: Minor</label>
+          <label><input type="radio" name="severity" value="3: Major" /> 3: Major</label>
+          <label><input type="radio" name="severity" value="4: Catastrophic" /> 4: Catastrophic</label>
         </div>
       </fieldset>
-
-      <label>Additional Notes<textarea id="notes" rows="4" placeholder="Optional notes, context, or follow-up questions."></textarea></label>
 
       <fieldset>
         <legend>Evidence</legend>
         <p class="hint">Add one or more photos for this issue.</p>
-        <input id="photo" class="visually-hidden" type="file" accept="image/*" capture="environment" />
+        <input id="photo" class="visually-hidden" type="file" accept="image/*" capture="environment" multiple />
         <button id="takePhotoBtn" type="button" class="secondary full">📷 Take Photo</button>
         <div id="photoThumbs" class="photo-thumbs"></div>
       </fieldset>
@@ -129,6 +141,7 @@
     </section>
   </main>
 
+  <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.28.1/lib/msal-browser.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
