@@ -36,12 +36,16 @@ let msalApp = null;
 let saveIssueInProgress = false;
 
 const $ = id => document.getElementById(id);
-const screens = ['sessionScreen', 'homeScreen', 'issueScreen', 'exportScreen'];
+const screens = ['sessionScreen', 'homeScreen', 'issueScreen'];
 const GRAPH = 'https://graph.microsoft.com/v1.0';
 
 function saveLocal() { localStorage.setItem('shc_state', JSON.stringify(state)); }
 function esc(s = '') { return String(s).replace(/[&<>"']/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[m])); }
 function timestampFileName(prefix, ext = 'jpg') { return `${prefix}-${new Date().toISOString().replace(/[:.]/g, '-')}.${ext}`; }
+function issueTimestampNow(date = new Date()) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(date.getFullYear() % 100)}.${pad(date.getMonth() + 1)}.${pad(date.getDate())}.${pad(date.getHours())}.${pad(date.getMinutes())}.${pad(date.getSeconds())}`;
+}
 function currentContextKey() { return `${state.session?.device || ''}||${state.session?.scenario || ''}`; }
 function issueBelongsToCurrent(i) { return !!state.session && i.device === state.session.device && i.scenario === state.session.scenario; }
 function numericSeverity(v = '') { return Number(String(v).trim().charAt(0)) || 0; }
@@ -156,7 +160,7 @@ function editIssue(id) {
   show('issueScreen');
 }
 
-function saveIssue() {
+async function saveIssue() {
   if (saveIssueInProgress) return;
   saveIssueInProgress = true;
   const saveBtn = $('saveIssueBtn');
@@ -178,6 +182,7 @@ function saveIssue() {
     const item = {
       id,
       timestamp: prior.timestamp || new Date().toISOString(),
+      issueTimestamp: prior.issueTimestamp || issueTimestampNow(),
       updatedAt: new Date().toISOString(),
       device: prior.device || state.session.device,
       scenario: prior.scenario || state.session.scenario,
@@ -199,12 +204,14 @@ function saveIssue() {
 
     saveLocal();
     show('homeScreen');
+    if (saveBtn) saveBtn.textContent = 'Syncing…';
+    await syncAll({ auto: true });
   } catch (err) {
     console.error(err);
     alert(`The issue could not be saved. ${err.message || err}`);
   } finally {
     saveIssueInProgress = false;
-    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save Issue'; }
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save & Sync Issue'; }
   }
 }
 
@@ -334,6 +341,7 @@ async function createRemoteIssue(ctx, issue, sessionId) {
     fields[`${f['Heuristics Violated']}@odata.type`] = 'Collection(Edm.String)';
     fields[f['Heuristics Violated']] = issue.heuristics || [];
   }
+  if (f['Issue Timestamp']) fields[f['Issue Timestamp']] = issue.issueTimestamp || (issue.timestamp ? issueTimestampNow(new Date(issue.timestamp)) : issueTimestampNow());
   if (f['Usability Issue Description']) fields[f['Usability Issue Description']] = issue.description;
   return graph(`/sites/${ctx.site.id}/lists/${list.id}/items`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields }) });
 }
@@ -360,12 +368,22 @@ async function uploadPhoto(ctx, issue, remoteIssueId, photo, index) {
   return photoListItem.id;
 }
 
-async function syncAll() {
-  if (!state.auth.account) { await signIn(); if (!state.auth.account) return; }
+async function syncAll(options = {}) {
+  const auto = !!options.auto;
+  if (!state.auth.account) {
+    await signIn();
+    if (!state.auth.account) {
+      if (auto) alert('Issue saved locally. Sign in to sync it to SharePoint.');
+      return;
+    }
+  }
   const unsynced = pendingIssues();
-  if (!unsynced.length) { alert('Everything is already synced to SharePoint.'); return; }
-  $('syncBtn').disabled = true; $('syncBtn').textContent = 'Syncing…';
+  if (!unsynced.length) {
+    if (!auto) alert('Everything is already synced to SharePoint.');
+    return;
+  }
   let syncStage = 'connecting to SharePoint';
+  setText('syncStatus', 'Syncing pending issue(s) to SharePoint…');
   try {
     const ctx = await getGraphContext();
     syncStage = 'creating or locating the evaluation session';
@@ -382,19 +400,21 @@ async function syncAll() {
       }
       saveLocal();
     }
-    alert(`${unsynced.length} issue(s) and associated photos were synced to SharePoint.`);
+    if (!auto) alert(`${unsynced.length} issue(s) and associated photos were synced to SharePoint.`);
   } catch (err) {
     console.error(err);
-    alert(`Sync stopped during ${syncStage}. Previously synced records were preserved.\n\n${err.message || err}`);
+    alert(`Issue saved locally, but sync stopped during ${syncStage}. Previously synced records were preserved.
+
+${err.message || err}`);
   } finally {
-    $('syncBtn').disabled = false; $('syncBtn').textContent = 'Sync'; render();
+    render();
   }
 }
 
 function rows() {
-  return state.issues.map(i => ({ issue_id: i.id, timestamp: i.timestamp, device: i.device, scenario: i.scenario, software_version: i.softwareVersion || '', drug_library_profile: i.drugLibrary || '', task_phase: i.taskPhase, location_of_occurrence: i.locationOccurrence, issue_title: i.title, usability_issue_description: i.description, heuristics: (i.heuristics || []).join('; '), severity: i.severity, photo_count: (i.photos || []).length, sync_status: i.remoteIssueId ? 'Synced' : 'Pending' }));
+  return state.issues.map(i => ({ issue_id: i.id, issue_timestamp: i.issueTimestamp || (i.timestamp ? issueTimestampNow(new Date(i.timestamp)) : ''), timestamp: i.timestamp, device: i.device, scenario: i.scenario, software_version: i.softwareVersion || '', drug_library_profile: i.drugLibrary || '', task_phase: i.taskPhase, location_of_occurrence: i.locationOccurrence, issue_title: i.title, usability_issue_description: i.description, heuristics: (i.heuristics || []).join('; '), severity: i.severity, photo_count: (i.photos || []).length, sync_status: i.remoteIssueId ? 'Synced' : 'Pending' }));
 }
-function toCsv(data) { const cols = Object.keys(data[0] || { issue_id:'', timestamp:'', device:'', scenario:'', software_version:'', drug_library_profile:'', task_phase:'', location_of_occurrence:'', issue_title:'', usability_issue_description:'', heuristics:'', severity:'', photo_count:'', sync_status:'' }); return [cols.join(','), ...data.map(r => cols.map(c => `"${String(r[c] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n'); }
+function toCsv(data) { const cols = Object.keys(data[0] || { issue_id:'', issue_timestamp:'', timestamp:'', device:'', scenario:'', software_version:'', drug_library_profile:'', task_phase:'', location_of_occurrence:'', issue_title:'', usability_issue_description:'', heuristics:'', severity:'', photo_count:'', sync_status:'' }); return [cols.join(','), ...data.map(r => cols.map(c => `"${String(r[c] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n'); }
 function download(name, content, type) { const blob = content instanceof Blob ? content : new Blob([content], { type }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
 function openExport() { $('exportPreview').value = toCsv(rows()); show('exportScreen'); }
 
@@ -415,21 +435,13 @@ function bind() {
   $('startSessionBtn').onclick = startSession;
   $('changeContextBtn').onclick = changeContext;
   $('cancelContextBtn').onclick = () => state.session ? show('homeScreen') : null;
-  $('finishScenarioBtn').onclick = finishScenario;
   $('newIssueBtn').onclick = newIssue;
   $('cancelIssueBtn').onclick = () => show('homeScreen');
   $('saveIssueBtn').onclick = saveIssue;
   $('photo').onchange = async e => { const files = [...e.target.files]; try { for (const f of files) photos.push(await compressImage(f)); renderPhotos(); } catch (err) { alert(`Could not add photo: ${err.message || err}`); } finally { e.target.value = ''; } };
   $('takePhotoBtn').onclick = () => $('photo').click();
-  $('exportBtn').onclick = openExport;
-  $('backFromExportBtn').onclick = () => show('homeScreen');
-  $('downloadCsvBtn').onclick = () => download('issues.csv', toCsv(rows()), 'text/csv');
-  $('downloadJsonBtn').onclick = () => download('issues.json', JSON.stringify(state.issues, null, 2), 'application/json');
-  $('downloadZipBtn').onclick = downloadZip;
   $('signInBtn').onclick = signIn;
   $('signOutBtn').onclick = signOut;
-  $('syncBtn').onclick = syncAll;
-  $('resetBtn').onclick = resetApp;
 }
 
-(async function init() { renderHeuristics(); bind(); render(); await setupAuth(); })();
+(async function init() { renderHeuristics(); bind(); render(); await setupAuth(); if (state.auth.account && pendingIssues().length) await syncAll({ auto: true }); })();

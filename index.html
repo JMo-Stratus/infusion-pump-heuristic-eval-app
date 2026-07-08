@@ -14,10 +14,8 @@
       <p id="sessionSummary">No session started</p>
     </div>
     <div class="header-actions">
-      <button id="syncBtn" class="secondary">Sync</button>
       <button id="signInBtn" class="ghost">Sign in</button>
       <button id="signOutBtn" class="ghost hidden">Sign out</button>
-      <button id="resetBtn" class="ghost">Reset</button>
     </div>
   </header>
 
@@ -58,7 +56,6 @@
         <p id="syncStatus" class="hint"></p>
         <div class="context-actions">
           <button id="changeContextBtn" class="secondary">Change Pump / Scenario</button>
-          <button id="finishScenarioBtn" class="ghost finish">Finish Scenario</button>
         </div>
         <div class="stats">
           <div><strong id="issueCount">0</strong><span>Issues</span></div>
@@ -70,7 +67,6 @@
       <section class="card">
         <div class="row between">
           <h2>Issue List</h2>
-          <button id="exportBtn" class="secondary">Export</button>
         </div>
         <div id="issueList" class="issue-list empty">No issues recorded yet.</div>
       </section>
@@ -128,20 +124,12 @@
         <div id="photoThumbs" class="photo-thumbs"></div>
       </fieldset>
 
-      <button id="saveIssueBtn" class="primary">Save Issue</button>
+      <button id="saveIssueBtn" class="primary">Save &amp; Sync Issue</button>
     </section>
 
-    <section id="exportScreen" class="card screen">
-      <div class="row between"><h2>Export Data</h2><button id="backFromExportBtn" class="ghost">Back</button></div>
-      <p>Download a ZIP package containing <strong>issues.csv</strong>, <strong>issues.json</strong>, and a <strong>photos</strong> folder with every photo associated with each issue.</p>
-      <button id="downloadZipBtn" class="primary">Download ZIP Package</button>
-      <button id="downloadCsvBtn" class="secondary full">Download CSV Only</button>
-      <button id="downloadJsonBtn" class="secondary full">Download JSON Only</button>
-      <textarea id="exportPreview" rows="12" readonly></textarea>
-    </section>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.28.1/lib/msal-browser.min.js"></script>
-  <script src="app.js?v=13"></script>
+  <script src="app.js?v=15"></script>
 </body>
 </html>
