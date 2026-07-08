@@ -26,6 +26,10 @@ const heuristics = [
 
 const defaultState = { session: null, issues: [], completedScenarios: [], auth: { account: null } };
 const state = JSON.parse(localStorage.getItem('shc_state') || JSON.stringify(defaultState));
+
+const PHOTO_DB_NAME = 'shc_photo_store';
+const PHOTO_DB_VERSION = 1;
+let photoDbPromise = null;
 state.issues ||= [];
 state.completedScenarios ||= [];
 state.auth ||= { account: null };
@@ -39,7 +43,91 @@ const $ = id => document.getElementById(id);
 const screens = ['sessionScreen', 'homeScreen', 'issueScreen'];
 const GRAPH = 'https://graph.microsoft.com/v1.0';
 
-function saveLocal() { localStorage.setItem('shc_state', JSON.stringify(state)); }
+
+function stateForLocalStorage() {
+  return {
+    ...state,
+    issues: (state.issues || []).map(issue => ({
+      ...issue,
+      // Photo image data is intentionally kept out of localStorage.
+      // iOS Safari has a small localStorage quota; evidence photos are stored
+      // separately in IndexedDB and referenced here by photoKey.
+      photos: (issue.photos || []).map(photo => {
+        const { data, ...metadata } = photo;
+        return metadata;
+      })
+    }))
+  };
+}
+function saveLocal() { localStorage.setItem('shc_state', JSON.stringify(stateForLocalStorage())); }
+
+function openPhotoDb() {
+  if (!('indexedDB' in window)) return Promise.reject(new Error('This browser does not support IndexedDB photo storage.'));
+  if (photoDbPromise) return photoDbPromise;
+  photoDbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(PHOTO_DB_NAME, PHOTO_DB_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains('photos')) db.createObjectStore('photos', { keyPath: 'photoKey' });
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error('Could not open local photo store.'));
+  });
+  return photoDbPromise;
+}
+function photoStoreTransaction(mode = 'readonly') {
+  return openPhotoDb().then(db => db.transaction('photos', mode).objectStore('photos'));
+}
+async function putPhotoRecord(record) {
+  const store = await photoStoreTransaction('readwrite');
+  return new Promise((resolve, reject) => {
+    const request = store.put(record);
+    request.onsuccess = () => resolve(record);
+    request.onerror = () => reject(request.error || new Error('Could not store photo locally.'));
+  });
+}
+async function getPhotoRecord(photoKey) {
+  const store = await photoStoreTransaction('readonly');
+  return new Promise((resolve, reject) => {
+    const request = store.get(photoKey);
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error || new Error('Could not retrieve local photo.'));
+  });
+}
+async function persistPhoto(photo, fallbackKey) {
+  if (!photo.data) return photo;
+  const photoKey = photo.photoKey || fallbackKey || `PHOTO-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const record = { ...photo, photoKey };
+  await putPhotoRecord(record);
+  const { data, ...metadata } = record;
+  return metadata;
+}
+async function ensurePhotoData(photo) {
+  if (photo.data) return photo;
+  if (!photo.photoKey) throw new Error('Photo data is missing from the local record.');
+  const stored = await getPhotoRecord(photo.photoKey);
+  if (!stored?.data) throw new Error('A pending photo could not be found in local photo storage.');
+  return { ...stored, ...photo, data: stored.data };
+}
+async function migrateLegacyPhotosFromLocalStorage() {
+  let changed = false;
+  for (const issue of state.issues || []) {
+    const nextPhotos = [];
+    for (let idx = 0; idx < (issue.photos || []).length; idx++) {
+      const photo = issue.photos[idx];
+      if (photo?.data) {
+        const persisted = await persistPhoto(photo, photo.photoKey || `${issue.id || 'legacy'}-photo-${idx + 1}-${Date.now()}`);
+        nextPhotos.push(persisted);
+        changed = true;
+      } else {
+        nextPhotos.push(photo);
+      }
+    }
+    issue.photos = nextPhotos;
+  }
+  if (changed) saveLocal();
+}
+
 function esc(s = '') { return String(s).replace(/[&<>"']/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[m])); }
 function timestampFileName(prefix, ext = 'jpg') { return `${prefix}-${new Date().toISOString().replace(/[:.]/g, '-')}.${ext}`; }
 function issueTimestampNow(date = new Date()) {
@@ -143,10 +231,10 @@ function clearIssueForm() {
 }
 
 function newIssue() { if (!state.session) { show('sessionScreen'); return; } clearIssueForm(); show('issueScreen'); }
-function editIssue(id) {
+async function editIssue(id) {
   const issue = state.issues.find(i => i.id === id); if (!issue) return;
   editingId = id;
-  photos = (issue.photos || []).map(p => ({ ...p }));
+  photos = await Promise.all((issue.photos || []).map(async p => ensurePhotoData({ ...p }).catch(() => ({ ...p }))));
   $('issueFormTitle').textContent = 'Edit Issue';
   $('issueTitle').value = issue.title || '';
   $('issueDescription').value = issue.description || '';
@@ -194,7 +282,7 @@ async function saveIssue() {
       locationOccurrence: $('locationOccurrence').value,
       heuristics: [...document.querySelectorAll('#heuristicChoices input:checked')].map(c => c.value),
       severity: document.querySelector('input[name="severity"]:checked').value,
-      photos: photos.map((p, idx) => ({ ...p, fileName: p.fileName || `${id}_photo-${idx + 1}.${p.type?.includes('png') ? 'png' : 'jpg'}` })),
+      photos: await Promise.all(photos.map((p, idx) => persistPhoto({ ...p, fileName: p.fileName || `${id}_photo-${idx + 1}.${p.type?.includes('png') ? 'png' : 'jpg'}` }, `${id}-photo-${idx + 1}`))),
       remoteIssueId: prior.remoteIssueId || null,
       remotePhotoIds: prior.remotePhotoIds || []
     };
@@ -217,13 +305,13 @@ async function saveIssue() {
 
 async function compressImage(file) {
   const bitmap = await createImageBitmap(file);
-  const max = 1600;
+  const max = 1400;
   const ratio = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement('canvas');
   canvas.width = Math.max(1, Math.round(bitmap.width * ratio));
   canvas.height = Math.max(1, Math.round(bitmap.height * ratio));
   canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.72));
   if (!blob) throw new Error('Photo compression failed.');
   const data = await blobToDataUrl(blob);
   return { data, type: 'image/jpeg', originalName: file.name || 'photo.jpg' };
@@ -350,7 +438,8 @@ async function uploadPhoto(ctx, issue, remoteIssueId, photo, index) {
   const safeTitle = (issue.title || 'issue').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').slice(0, 50) || 'issue';
   const ext = photo.type?.includes('png') ? 'png' : 'jpg';
   const name = photo.fileName || timestampFileName(`${safeTitle}-${index + 1}`, ext);
-  const blob = dataUriToBlob(photo.data);
+  const photoWithData = await ensurePhotoData(photo);
+  const blob = dataUriToBlob(photoWithData.data);
   const encodedPath = encodeURIComponent(name).replace(/%2F/g, '/');
   const driveItem = await graph(`/drives/${ctx.photoDriveId}/root:/${encodedPath}:/content`, { method: 'PUT', headers: { 'Content-Type': blob.type }, body: blob });
   // The upload response does not consistently include listItem on SharePoint-backed drives.
@@ -444,4 +533,4 @@ function bind() {
   $('signOutBtn').onclick = signOut;
 }
 
-(async function init() { renderHeuristics(); bind(); render(); await setupAuth(); if (state.auth.account && pendingIssues().length) await syncAll({ auto: true }); })();
+(async function init() { await migrateLegacyPhotosFromLocalStorage(); renderHeuristics(); bind(); render(); await setupAuth(); if (state.auth.account && pendingIssues().length) await syncAll({ auto: true }); })();
