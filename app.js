@@ -33,6 +33,7 @@ let editingId = null;
 let photos = [];
 let graphContext = null;
 let msalApp = null;
+let saveIssueInProgress = false;
 
 const $ = id => document.getElementById(id);
 const screens = ['sessionScreen', 'homeScreen', 'issueScreen', 'exportScreen'];
@@ -156,33 +157,55 @@ function editIssue(id) {
 }
 
 function saveIssue() {
-  if (!state.session) { alert('Select a pump system and scenario before recording issues.'); return; }
-  const title = $('issueTitle').value.trim();
-  const description = $('issueDescription').value.trim();
-  if (!title || !description) { alert('Enter an issue title and usability issue description.'); return; }
-  const id = editingId || `ISS-${Date.now()}`;
-  const prior = state.issues.find(i => i.id === id) || {};
-  const item = {
-    id,
-    timestamp: prior.timestamp || new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    device: prior.device || state.session.device,
-    scenario: prior.scenario || state.session.scenario,
-    softwareVersion: prior.softwareVersion || state.session.softwareVersion || '',
-    drugLibrary: prior.drugLibrary || state.session.drugLibrary || '',
-    title,
-    description,
-    taskPhase: $('taskPhase').value,
-    locationOccurrence: $('locationOccurrence').value,
-    heuristics: [...document.querySelectorAll('#heuristicChoices input:checked')].map(c => c.value),
-    severity: document.querySelector('input[name="severity"]:checked').value,
-    photos: photos.map((p, idx) => ({ ...p, fileName: p.fileName || `${id}_photo-${idx + 1}.${p.type?.includes('png') ? 'png' : 'jpg'}` })),
-    remoteIssueId: prior.remoteIssueId || null,
-    remotePhotoIds: prior.remotePhotoIds || []
-  };
-  if (editingId) state.issues = state.issues.map(i => i.id === id ? item : i); else state.issues.push(item);
-  saveLocal();
-  show('homeScreen');
+  if (saveIssueInProgress) return;
+  saveIssueInProgress = true;
+  const saveBtn = $('saveIssueBtn');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
+  try {
+    if (!state.session) { alert('Select a pump system and scenario before recording issues.'); return; }
+    const title = $('issueTitle').value.trim();
+    const description = $('issueDescription').value.trim();
+    if (!title || !description) { alert('Enter an issue title and usability issue description.'); return; }
+
+    // Assign the issue ID immediately. This makes repeated taps update the same
+    // in-progress issue instead of creating duplicate local records while iOS is
+    // busy saving photo data to browser storage.
+    const wasEditing = !!editingId;
+    const id = editingId || `ISS-${Date.now()}`;
+    editingId = id;
+
+    const prior = state.issues.find(i => i.id === id) || {};
+    const item = {
+      id,
+      timestamp: prior.timestamp || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      device: prior.device || state.session.device,
+      scenario: prior.scenario || state.session.scenario,
+      softwareVersion: prior.softwareVersion || state.session.softwareVersion || '',
+      drugLibrary: prior.drugLibrary || state.session.drugLibrary || '',
+      title,
+      description,
+      taskPhase: $('taskPhase').value,
+      locationOccurrence: $('locationOccurrence').value,
+      heuristics: [...document.querySelectorAll('#heuristicChoices input:checked')].map(c => c.value),
+      severity: document.querySelector('input[name="severity"]:checked').value,
+      photos: photos.map((p, idx) => ({ ...p, fileName: p.fileName || `${id}_photo-${idx + 1}.${p.type?.includes('png') ? 'png' : 'jpg'}` })),
+      remoteIssueId: prior.remoteIssueId || null,
+      remotePhotoIds: prior.remotePhotoIds || []
+    };
+
+    if (wasEditing || prior.id) state.issues = state.issues.map(i => i.id === id ? item : i);
+    else state.issues.push(item);
+
+    saveLocal();
+    show('homeScreen');
+  } catch (err) {
+    console.error(err);
+    alert(`The issue could not be saved. ${err.message || err}`);
+  } finally {
+    saveIssueInProgress = false;
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save Issue'; }
+  }
 }
 
 async function compressImage(file) {
