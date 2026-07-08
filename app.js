@@ -321,10 +321,22 @@ function dataUriToBlob(dataUri) { const [head, b64] = dataUri.split(','); const 
 
 async function setupAuth() {
   if (!window.msal) { alert('Microsoft sign-in library did not load. Check your network connection.'); return; }
-  msalApp = new msal.PublicClientApplication({ auth: { clientId: APP_CONFIG.clientId, authority: `https://login.microsoftonline.com/${APP_CONFIG.tenantId}`, redirectUri: window.location.origin + window.location.pathname }, cache: { cacheLocation: 'localStorage' } });
+  msalApp = new msal.PublicClientApplication({
+    auth: {
+      clientId: APP_CONFIG.clientId,
+      authority: `https://login.microsoftonline.com/${APP_CONFIG.tenantId}`,
+      redirectUri: window.location.origin + window.location.pathname
+    },
+    cache: { cacheLocation: 'localStorage' }
+  });
   await msalApp.initialize();
+
+  // Complete any Microsoft sign-in / token refresh redirect before the app tries to sync.
+  const redirectResult = await msalApp.handleRedirectPromise();
+  if (redirectResult?.account) setAccount(redirectResult.account);
+
   const accounts = msalApp.getAllAccounts();
-  if (accounts.length) setAccount(accounts[0]);
+  if (accounts.length && !state.auth.account) setAccount(accounts[0]);
 }
 function setAccount(account) { state.auth.account = account ? { username: account.username, name: account.name, homeAccountId: account.homeAccountId } : null; saveLocal(); render(); }
 async function signIn() {
@@ -339,8 +351,17 @@ async function signOut() {
 async function token() {
   const account = msalApp.getAllAccounts()[0];
   if (!account) throw new Error('Sign in before syncing.');
-  try { const r = await msalApp.acquireTokenSilent({ account, scopes: APP_CONFIG.graphScopes }); return r.accessToken; }
-  catch { const r = await msalApp.acquireTokenPopup({ account, scopes: APP_CONFIG.graphScopes }); return r.accessToken; }
+  try {
+    const r = await msalApp.acquireTokenSilent({ account, scopes: APP_CONFIG.graphScopes });
+    return r.accessToken;
+  } catch (err) {
+    // Mobile Safari can block MSAL popup windows when sync is launched after an async save
+    // or during automatic background sync. Use redirect-based token renewal instead.
+    // The issue has already been saved locally, so the app can resume sync after return.
+    localStorage.setItem('shc_resume_sync_after_redirect', '1');
+    await msalApp.acquireTokenRedirect({ account, scopes: APP_CONFIG.graphScopes });
+    throw new Error('Redirecting to Microsoft sign-in to refresh access. Return to the app to finish sync.');
+  }
 }
 async function graph(path, options = {}) {
   const accessToken = await token();
@@ -533,4 +554,15 @@ function bind() {
   $('signOutBtn').onclick = signOut;
 }
 
-(async function init() { await migrateLegacyPhotosFromLocalStorage(); renderHeuristics(); bind(); render(); await setupAuth(); if (state.auth.account && pendingIssues().length) await syncAll({ auto: true }); })();
+(async function init() {
+  await migrateLegacyPhotosFromLocalStorage();
+  renderHeuristics();
+  bind();
+  render();
+  await setupAuth();
+  const shouldResumeSync = localStorage.getItem('shc_resume_sync_after_redirect') === '1';
+  if (state.auth.account && pendingIssues().length) {
+    if (shouldResumeSync) localStorage.removeItem('shc_resume_sync_after_redirect');
+    await syncAll({ auto: true });
+  }
+})();
