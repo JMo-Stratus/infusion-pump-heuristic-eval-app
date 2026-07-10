@@ -220,6 +220,7 @@ function finishScenario() {
 function clearIssueForm() {
   editingId = null; photos = [];
   $('issueFormTitle').textContent = 'New Issue';
+  $('cancelIssueBtn').textContent = 'Cancel';
   $('issueTitle').value = '';
   $('issueDescription').value = '';
   $('taskPhase').value = state.session?.scenario || 'Normal saline infusion at 125 mL/hr';
@@ -230,12 +231,22 @@ function clearIssueForm() {
   renderPhotos();
 }
 
+function closeIssueForm() {
+  editingId = null;
+  photos = [];
+  saveIssueInProgress = false;
+  const saveBtn = $('saveIssueBtn');
+  if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save & Sync Issue'; }
+  show('homeScreen');
+}
+
 function newIssue() { if (!state.session) { show('sessionScreen'); return; } clearIssueForm(); show('issueScreen'); }
 async function editIssue(id) {
   const issue = state.issues.find(i => i.id === id); if (!issue) return;
   editingId = id;
   photos = await Promise.all((issue.photos || []).map(async p => ensurePhotoData({ ...p }).catch(() => ({ ...p }))));
   $('issueFormTitle').textContent = 'Edit Issue';
+  $('cancelIssueBtn').textContent = 'Back';
   $('issueTitle').value = issue.title || '';
   $('issueDescription').value = issue.description || '';
   $('taskPhase').value = issue.taskPhase || state.session?.scenario || 'Normal saline infusion at 125 mL/hr';
@@ -546,7 +557,7 @@ function bind() {
   $('changeContextBtn').onclick = changeContext;
   $('cancelContextBtn').onclick = () => state.session ? show('homeScreen') : null;
   $('newIssueBtn').onclick = newIssue;
-  $('cancelIssueBtn').onclick = () => show('homeScreen');
+  $('cancelIssueBtn').onclick = closeIssueForm;
   $('saveIssueBtn').onclick = saveIssue;
   $('photo').onchange = async e => { const files = [...e.target.files]; try { for (const f of files) photos.push(await compressImage(f)); renderPhotos(); } catch (err) { alert(`Could not add photo: ${err.message || err}`); } finally { e.target.value = ''; } };
   $('takePhotoBtn').onclick = () => $('photo').click();
